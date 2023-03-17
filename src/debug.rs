@@ -29,33 +29,31 @@ impl<T> Default for DebugCursorMesh<T> {
 }
 
 /// Updates the 3d cursor to be in the pointed world coordinates
-#[allow(clippy::too_many_arguments)]
 pub fn update_debug_cursor<T: 'static>(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut cursors: Query<(&Intersection<T>, &mut Transform), With<DebugCursor<T>>>,
-    intersection_without_cursor: Query<(Entity, &Intersection<T>), Without<DebugCursor<T>>>,
+    mut cursors: Query<(Entity, &mut Transform), With<DebugCursor<T>>>,
+    intersections: Query<&Intersection<T>>,
 ) {
-    // Set the cursor translation to the top pick's world coordinates
-    for (intersection, mut transform) in &mut cursors {
-        *transform = Transform::from_matrix(intersection.normal_ray().to_transform());
-    }
-    // Spawn a new debug cursor for intersections without one
-    for (entity, intersection) in &intersection_without_cursor {
-        spawn_cursor::<T>(
-            &mut commands,
-            entity,
-            Transform::from_matrix(intersection.normal_ray().to_transform()),
-            &mut meshes,
-            &mut materials,
-        );
+    if let Some(intersection) = intersections.iter().next() {
+        if let Some((_, mut transform)) = cursors.iter_mut().next() {
+            *transform = Transform::from_matrix(intersection.normal_ray().to_transform());
+        } else {
+            spawn_cursor::<T>(
+                &mut commands,
+                Transform::from_matrix(intersection.normal_ray().to_transform()),
+                &mut meshes,
+                &mut materials,
+            );
+        }
+    } else {
+        cursors.for_each(|(e, _)| commands.entity(e).despawn_recursive());
     }
 }
 
 fn spawn_cursor<T: 'static>(
     commands: &mut Commands,
-    entity: Entity,
     transform: Transform,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
@@ -81,11 +79,13 @@ fn spawn_cursor<T: 'static>(
         ..Default::default()
     });
     commands
-        .entity(entity)
-        .insert(SpatialBundle {
-            transform,
-            ..default()
-        })
+        .spawn((
+            DebugCursor::<T>::default(),
+            SpatialBundle {
+                transform,
+                ..default()
+            },
+        ))
         // cursor
         .with_children(|parent| {
             let tail_scale = (cube_size * cube_tail_scale) / 2.0;
@@ -131,6 +131,5 @@ fn spawn_cursor<T: 'static>(
                 },
                 DebugCursorMesh::<T>::default(),
             ));
-        })
-        .insert(DebugCursor::<T>::default());
+        });
 }
